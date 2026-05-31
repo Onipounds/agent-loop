@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-loop"
+version = "0.1.0"
+description = "A small, transparent AI agent harness: tool-calling loop, memory, self-verification, and an eval harness, with a deterministic offline mode."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Femi Adebiyi Onisile" }]
+dependencies = []
+
+[project.optional-dependencies]
+anthropic = ["anthropic>=0.40"]
+mcp = ["mcp>=1.2"]
+dev = ["pytest>=8"]
+
+[project.scripts]
+agent-loop = "agent_loop.cli:main"
+
+[tool.setuptools]
+packages = ["agent_loop"]
+
+[tool.setuptools.package-data]
+agent_loop = ["../data/*.json", "../tasks/*.json"]

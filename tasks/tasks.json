@@ -1,0 +1,20 @@
+[
+  {
+    "name": "avg_temp_within_limit",
+    "prompt": "What was the average temperature on pump-3, and is it within the safe limit of 75 degrees?",
+    "expect_substring": "within",
+    "expect_verified": true
+  },
+  {
+    "name": "max_temp_pump7",
+    "prompt": "What is the maximum temperature recorded on pump-7?",
+    "expect_substring": "88",
+    "expect_verified": true
+  },
+  {
+    "name": "pressure_mean",
+    "prompt": "What is the mean pressure on pump-3?",
+    "expect_substring": "5",
+    "expect_verified": true
+  }
+]
