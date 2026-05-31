@@ -52,9 +52,16 @@ Three small, real tools the agent can compose: `query_telemetry` (reads a bundle
 
 ## Closing the loop: verification
 
-The headline feature. When the model produces a final answer, the verifier checks that **every number in the answer is grounded** — it must match a value that actually appeared in a tool result this run (within tolerance). If the agent invents a figure, verification fails, the reason is fed back, and the agent retries. This is what turns "the model said so" into "the model showed its work."
+The headline feature, in two layers (cheapest first), run after every candidate answer:
 
-The check is deliberately simple, transparent, and deterministic. It catches the most common and most damaging agent failure — hallucinated numbers — at near-zero cost. It does **not** understand meaning; stronger layers (independent re-computation, semantic checks) can be added on top.
+1. **Grounding** — every number in the answer must match a value that actually appeared in a tool result this run (within tolerance). Catches *invented* numbers.
+2. **Re-computation** — when the answer states an aggregate (mean / max / min), the verifier independently recomputes it from the raw readings and confirms the agent's figure matches. Catches numbers that look grounded but are *wrong* — e.g. the agent fetched the data but computed the average incorrectly.
+
+If either fails, the reason is fed back and the agent retries. This is what turns "the model said so" into "the model showed its work, and the work checks out."
+
+Both layers are deliberately simple, transparent, and deterministic — no extra model call. They reason about numbers, not meaning; semantic checks could layer on top.
+
+A note on tolerance, because it bit me: grounding uses a *relative* tolerance, but re-computation deliberately uses a tight *absolute* one. An early version reused the relative (1%) tolerance for re-computation — and for readings around 70, a 1% band is ±0.7, wide enough to wave through a wrong mean (it accepted 70.6 when the true mean was 70.88). Re-computation is checking *correctness*, so it compares absolutely. My own end-to-end test caught it.
 
 ## Offline / deterministic mode
 
@@ -83,7 +90,7 @@ Each task pairs a prompt with a checker (expected substring and/or "must be veri
 - **Hand-built loop, not a framework.** I wanted the mechanics visible and the dependencies near-zero. For a production system with many agent types I'd reach for a framework, but you should understand the loop before you abstract it.
 - **`max_steps` guard.** Agents need a hard stop, or a bad plan loops forever and burns cost. The budget is explicit and the run reports how many model calls it used.
 - **Tool errors are fed back, not raised.** A tool that fails returns an `{"error": ...}` result the model can see and react to, which is far more robust than crashing the run.
-- **Grounding verification over trust.** Cheap and deterministic, and it catches hallucinated numbers — the failure that matters most here. A known limitation: it reasons about numbers, not meaning. (Implementing it surfaced a real bug worth keeping in mind — an early version read the `7` in `pump-7` as a numeric claim and rejected correct answers; the fix was to strip identifier tokens before extracting numbers. Verification logic needs its own tests.)
+- **Layered verification over trust.** Grounding (cheap, catches invented numbers) plus re-computation (independently recomputes aggregates, catches wrong-but-grounded numbers). Both deterministic. Two bugs worth keeping in mind, both caught by my own tests: an early version read the `7` in `pump-7` as a numeric claim and rejected correct answers (fixed by stripping identifier tokens before extracting numbers); and re-computation first reused a relative tolerance wide enough to accept a wrong mean (fixed with a tight absolute tolerance). Verification logic needs its own tests.
 - **Model behind an interface.** Determinism and zero-cost CI, at the price of the offline path not exercising the real model's behaviour — so both paths exist.
 
 ## Limitations / what I'd do at scale
@@ -92,7 +99,7 @@ This is a single-process, serial harness with in-memory state. To grow it: run t
 
 ## Testing & CI
 
-~21 tests covering the tools, memory, verification (including the identifier edge case), the loop (multi-step completion, rejection-and-retry, tool-error handling, the step budget), the offline planner, and the eval runner. CI runs the suite and the offline eval on Python 3.10, 3.11, and 3.12.
+~26 tests covering the tools, memory, verification (grounding, re-computation, and the identifier edge case), the loop (multi-step completion, rejection-and-retry, tool-error handling, the step budget), the offline planner, and the eval runner. CI runs the suite and the offline eval on Python 3.10, 3.11, and 3.12.
 
 ## License
 

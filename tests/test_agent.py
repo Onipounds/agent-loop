@@ -100,18 +100,67 @@ def test_verify_accepts_grounded_number():
     assert verify("q", "The average is 70.8", mem).ok
 
 
+# --- re-computation verifier ------------------------------------------------
+
+def _mem_with_values(values):
+    mem = Memory()
+    call = ToolCall(id="1", name="query_telemetry", input={})
+    mem.add_tool_results([(call, {"values": values})])
+    return mem
+
+
+def test_recompute_catches_wrong_but_grounded_mean():
+    from agent_loop.verify import verify_recompute
+    # All numbers are individually grounded, but the stated mean is wrong.
+    mem = _mem_with_values([70.0, 72.0])  # true mean 71.0
+    check = verify_recompute("What is the average temperature?", "The average is 72.0", mem)
+    assert not check.ok
+    assert "71" in check.feedback
+
+
+def test_recompute_accepts_correct_mean():
+    from agent_loop.verify import verify_recompute
+    mem = _mem_with_values([70.0, 72.0])
+    assert verify_recompute("What is the average?", "The average is 71.0", mem).ok
+
+
+def test_recompute_abstains_without_aggregate_word():
+    from agent_loop.verify import verify_recompute
+    mem = _mem_with_values([70.0, 72.0])
+    # No aggregate named -> must not block.
+    assert verify_recompute("What are the readings?", "They are 70 and 72.", mem).ok
+
+
+def test_recompute_catches_wrong_max():
+    from agent_loop.verify import verify_recompute
+    mem = _mem_with_values([82.0, 88.0, 85.0])  # true max 88.0
+    check = verify_recompute("What is the maximum temperature?", "The maximum is 85.0", mem)
+    assert not check.ok
+
+
+def test_combined_verify_runs_both_layers():
+    # Grounded individually but wrong mean -> combined verify must reject
+    # via the re-computation layer.
+    mem = _mem_with_values([70.0, 72.0])
+    check = verify("What is the average temperature?", "The average is 72.0", mem)
+    assert not check.ok
+    assert "re-computation" in check.feedback
+
+
 # --- runtime loop -----------------------------------------------------------
 
 def test_run_completes_multistep_task():
     tools = build_default_registry()
+    # Use a metric the verifier won't independently recompute against a long
+    # raw list: query the data, compute, and answer the real mean (70.88).
     model = FakeModel([
         Scripted(tool_calls=[("query_telemetry", {"device": "pump-3", "metric": "temperature"})]),
-        Scripted(tool_calls=[("calculate", {"expression": "round(mean(70.0,71.0),2)"})]),
-        Scripted(text="The average temperature on pump-3 is 70.5."),
+        Scripted(tool_calls=[("calculate", {"expression": "round(mean(70.1,70.4,71.0,70.8,71.2,71.5,70.9,71.1,70.7,71.3,71.0,70.6),2)"})]),
+        Scripted(text="The average temperature on pump-3 is 70.88."),
     ])
     result = run("avg temp pump-3?", model, tools)
     assert result.verified
-    assert "70.5" in result.answer
+    assert "70.88" in result.answer
     assert result.n_model_calls == 3
 
 
